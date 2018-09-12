@@ -1,6 +1,9 @@
+source https://www.myget.org/F/azure-appservice-staging/api/v2
 source https://nuget.org/api/v2
 
 nuget FAKE
+nuget Newtonsoft.Json >= 9.0.1
 nuget xunit.runner.console = 2.3.0-beta4-build3742
-nuget WindowsAzure.Storage = 7.2.1
+nuget WindowsAzure.Storage >= 7.2.1
+nuget Microsoft.NET.Sdk.Functions = 1.0.20
 nuget FSharp.Data
