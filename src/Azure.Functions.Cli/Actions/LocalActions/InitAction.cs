@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Azure.Functions.Cli.Common;
@@ -10,6 +11,7 @@ using Azure.Functions.Cli.Interfaces;
 using Colors.Net;
 using Fclp;
 using Microsoft.Azure.WebJobs.Script;
+using Newtonsoft.Json;
 using static Azure.Functions.Cli.Common.OutputTheme;
 using static Colors.Net.StringStaticMethods;
 
@@ -32,12 +34,13 @@ namespace Azure.Functions.Cli.Actions.LocalActions
 
         public bool Csx { get; set; }
 
+        public bool ExtensionBundle { get; set; }
+
         public string Language { get; set; }
 
         internal readonly Dictionary<Lazy<string>, Task<string>> fileToContentMap = new Dictionary<Lazy<string>, Task<string>>
         {
-            { new Lazy<string>(() => ".gitignore"), StaticResources.GitIgnore },
-            { new Lazy<string>(() => ScriptConstants.HostMetadataFileName), StaticResources.HostJson },
+            { new Lazy<string>(() => ".gitignore"), StaticResources.GitIgnore }
         };
 
         private readonly ITemplatesManager _templatesManager;
@@ -82,6 +85,11 @@ namespace Azure.Functions.Cli.Actions.LocalActions
                 .WithDescription("Initialize a language specific project. Currently supported when --worker-runtime set to node. Options are - \"typescript\" and \"javascript\"")
                 .Callback(l => Language = l);
 
+            Parser
+                .Setup<bool>("extension-bundle")
+                .WithDescription("use default extension bundle configuration in host.json")
+                .Callback(e => ExtensionBundle = e);
+
             if (args.Any() && !args.First().StartsWith("-"))
             {
                 FolderName = args.First();
@@ -92,6 +100,7 @@ namespace Azure.Functions.Cli.Actions.LocalActions
 
         public override async Task RunAsync()
         {
+            
             if (SourceControl != SourceControl.Git)
             {
                 throw new Exception("Only Git is supported right now for vsc");
@@ -145,13 +154,36 @@ namespace Azure.Functions.Cli.Actions.LocalActions
         {
             if (workerRuntime == Helpers.WorkerRuntime.node)
             {
-                if (WorkerRuntimeLanguageHelper.WorkerToSupportedLanguages.TryGetValue(workerRuntime, out IEnumerable<string> languages) 
+                if (WorkerRuntimeLanguageHelper.WorkerToSupportedLanguages.TryGetValue(workerRuntime, out IEnumerable<string> languages)
                     && languages.Count() != 0)
                 {
                     ColoredConsole.Write("Select a Language: ");
                     Language = SelectionMenuHelper.DisplaySelectionWizard(languages);
                     ColoredConsole.WriteLine(TitleColor(Language));
                 }
+            }
+        }
+
+        private async Task<string> GetHostConfig()
+        {
+            if (ExtensionBundle)
+            {
+                using (var httpClient = new HttpClient())
+                {
+                    string cdnUri = Environment.GetEnvironmentVariable(EnvironmentSettingNames.AlternateCdnUri) ?? ScriptConstants.CdnBaseUri;
+                    var uri = new Uri($"{cdnUri}/hostJson/v2/{ScriptConstants.HostMetadataFileName}");
+                    var response = await httpClient.GetAsync(uri);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return string.Empty;
+                    }
+
+                    return await response.Content.ReadAsStringAsync();
+                }
+            }
+            else
+            {
+                return await StaticResources.HostJson;
             }
         }
 
@@ -251,6 +283,8 @@ namespace Azure.Functions.Cli.Actions.LocalActions
             {
                 await WriteFiles(pair.Key.Value, await pair.Value);
             }
+
+            await WriteFiles(ScriptConstants.HostMetadataFileName, await GetHostConfig());
         }
 
         private async Task WriteFiles(string fileName, string fileContent)
