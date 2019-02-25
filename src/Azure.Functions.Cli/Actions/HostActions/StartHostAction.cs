@@ -19,6 +19,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Script;
+using Microsoft.Azure.WebJobs.Script.Configuration;
+using Microsoft.Azure.WebJobs.Script.DependencyInjection;
+using Microsoft.Azure.WebJobs.Script.ExtensionBundle;
 using Microsoft.Azure.WebJobs.Script.WebHost;
 using Microsoft.Azure.WebJobs.Script.WebHost.Authentication;
 using Microsoft.Azure.WebJobs.Script.WebHost.Controllers;
@@ -151,6 +154,10 @@ namespace Azure.Functions.Cli.Actions.HostActions
                 .ConfigureAppConfiguration(configBuilder =>
                 {
                     configBuilder.AddEnvironmentVariables();
+                    configBuilder.Add(new ExtensionBundleConfigurationSource
+                    {
+                        IsAppServiceEnvironment = false,
+                    });
                 })
                 .ConfigureLogging(loggingBuilder =>
                 {
@@ -441,6 +448,13 @@ namespace Azure.Functions.Cli.Actions.HostActions
                     o.IsSelfHost = _hostOptions.IsSelfHost;
                     o.SecretsPath = _hostOptions.SecretsPath;
                 });
+                services.ConfigureOptions<ExtensionBundleOptionsSetup>();
+                services.Configure<ExtensionBundleOptions>(o =>
+                {
+                    o.DownloadPath = Path.Combine(Path.GetTempPath(), ScriptConstants.ExtensionBundleDirectory, o.Id ?? string.Empty);
+                });
+                services.AddSingleton<IExtensionBundleManager, ExtensionBundleManager>();
+                services.AddSingleton<IScriptStartupTypeLocatorFactory, ScriptStartupTypeLocatorFactory>();
 
                 services.AddSingleton<IConfigureBuilder<IConfigurationBuilder>, DisableConsoleConfigurationBuilder>();
                 services.AddSingleton<IConfigureBuilder<ILoggingBuilder>, LoggingBuilder>();
